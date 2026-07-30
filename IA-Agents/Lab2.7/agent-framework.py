@@ -4,6 +4,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Add references
+from agent_framework import tool, Agent
+from agent_framework.foundry import FoundryChatClient
+from azure.identity import AzureCliCredential
+from pydantic import Field
+from typing import Annotated
 
 
 load_dotenv()
@@ -26,17 +31,50 @@ async def main():
     
 async def process_expenses_data(prompt, expenses_data):
 
-    # Create a foundry chat client
-    
+    # Create a foundry chat client 
+    client = FoundryChatClient(
+        project_endpoint=os.getenv("PROJECT_ENDPOINT"),
+        model=os.getenv("MODEL_DEPLOYMENT_NAME"),
+        credential=AzureCliCredential()
+    )
+        
 
     # Initialize an agent with the tool and instructions
+    async with (
+        Agent(
+            client=client,
+            name="ExpenseClaimAgent",
+            instructions="""Você é um assistente de IA para a submissão de reembolsos de despesas.  
+A pedido do usuário, crie um reembolso de despesas e use a função do plug-in para enviar um e-mail para expenses@contoso.com com o assunto 'Reembolso de Despesas' e um corpo que contenha as despesas detalhadas com o total.  
+Então confirme para o usuário que isso foi feito. Não peça mais informações ao usuário, apenas use os dados fornecidos para criar o e-mail.""",
+            tools=[submit_claim],
+        ) as agent,
+    ):
     
 
-        # Use the agent to process the expenses data    
+        # Use the agent to process the expenses data
+        try:
+            # Add the input prompt to a list of messages to be submitted
+            prompt_messages = [f"{prompt}: {expenses_data}"]
+            # Invoke the agent for the specified thread with the messages
+            response = await agent.run(prompt_messages)
+            # Display the response
+            print(f"\n# Agent:\n{response}")
+        except Exception as e:
+            # Something went wrong
+            print (e) 
 
 
 
 # Create a tool function for the email functionality
+@tool(approval_mode="never_require")
+def submit_claim(
+    to: Annotated[str, Field(description="Who to send the email to")],
+    subject: Annotated[str, Field(description="The subject of the email.")],
+    body: Annotated[str, Field(description="The text body of the email.")]):
+        print("\nTo:", to)
+        print("Subject:", subject)
+        print(body, "\n")
 
 
 
